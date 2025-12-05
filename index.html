@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TON Grid Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Анимация фона */
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        body {
+            background: linear-gradient(-45deg, #020617, #1e3a8a, #0f172a, #172554);
+            background-size: 400% 400%;
+            animation: gradientBG 10s ease infinite;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: white;
+            overflow: hidden;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            height: 100dvh; 
+        }
+
+        /* Эффект стекла */
+        .glass {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Основной контейнер для игры с отступами от краев и ограничением ширины */
+        .game-container {
+            width: 100%;
+            max-width: 28rem; /* Ограничение ширины для ПК - примерно 448px */
+            padding-left: 1rem; /* Отступ слева для мобилок */
+            padding-right: 1rem; /* Отступ справа для мобилок */
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        /* Рамка вокруг всего поля (всех минок) */
+        .grid-frame {
+            background: rgba(15, 23, 42, 0.6);
+            border: 2px solid rgba(59, 130, 246, 0.3);
+            border-radius: 16px;
+            padding: 16px; /* УВЕЛИЧИЛ ОТСТУПЫ ВОКРУГ СЕТКИ */
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3), inset 0 0 20px rgba(59, 130, 246, 0.1);
+            margin-bottom: 1rem;
+            position: relative;
+            width: 100%; 
+        }
+
+        /* Декоративные элементы рамки */
+        .grid-frame::before {
+            content: '';
+            position: absolute;
+            top: -2px; left: 20px; right: 20px; /* Увеличил отступы */
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+        }
+        .grid-frame::after {
+            content: '';
+            position: absolute;
+            bottom: -2px; left: 20px; right: 20px; /* Увеличил отступы */
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+        }
+
+        /* Сетка игры - УМЕНЬШИЛ ЯЧЕЙКИ, УВЕЛИЧИЛ ОТСТУПЫ МЕЖДУ НИМИ */
+        .game-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px; /* Увеличил отступы между ячейками */
+            width: 100%;
+            perspective: 1000px;
+        }
+
+        /* САМИ ЯЧЕЙКИ СТАЛИ МЕНЬШЕ */
+        .cell {
+            aspect-ratio: 1;
+            background: rgba(30, 41, 59, 0.5);
+            border-radius: 10px; /* Немного увеличил для баланса */
+            cursor: pointer;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s, box-shadow 0.2s, border-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px; /* Уменьшил размер шрифта */
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            border: 2px solid rgba(255, 255, 255, 0.05);
+            min-height: 50px; /* Гарантируем минимальную высоту */
+        }
+
+        /* Стиль выбранной ячейки */
+        .cell.selected {
+            border-color: #3b82f6;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.6), inset 0 0 10px rgba(59, 130, 246, 0.2);
+            background: rgba(59, 130, 246, 0.15);
+            z-index: 10;
+        }
+        
+        .cell.selected::after {
+            content: 'ВЫБОР';
+            position: absolute;
+            top: -10px; /* Поднял выше */
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 8px;
+            background: #3b82f6;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-weight: 800;
+            white-space: nowrap;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        /* Блокировка выбора (когда ставка сделана) */
+        .cell.locked {
+            cursor: not-allowed;
+            opacity: 0.9;
+        }
+
+        .cell.flipped {
+            transform: rotateY(180deg);
+        }
+
+        .cell-front, .cell-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .cell-front {
+            background: rgba(30, 41, 59, 0.5);
+        }
+
+        .cell-back {
+            transform: rotateY(180deg);
+            background: #0f172a;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* УМЕНЬШИЛ МИНЫ И ГЕМЫ СООТВЕТСТВЕННО */
+        .mine { 
+            color: #ef4444; 
+            font-size: 1.3rem !important; /* Еще меньше для маленьких ячеек */
+            filter: drop-shadow(0 0 5px #ef4444); 
+            opacity: 1 !important; 
+            visibility: visible !important;
+        }
+        .gem { 
+            color: #3b82f6; 
+            font-size: 1.3rem !important; /* Еще меньше для маленьких ячеек */
+            filter: drop-shadow(0 0 6px #3b82f6); 
+            opacity: 1 !important; 
+            visibility: visible !important;
+        }
+
+        /* Таймер */
+        .timer-bar-container {
+            width: 100%;
+            height: 4px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .timer-bar {
+            height: 100%;
+            background: #3b82f6;
+            width: 100%;
+            transition: width 0.1s linear;
+            box-shadow: 0 0 8px #3b82f6;
+        }
+
+        .slide-up { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        /* Навигация */
+        .nav-container {
+            padding-bottom: env(safe-area-inset-bottom);
+            height: 56px;
+            margin-left: auto;
+            margin-right: auto;
+            width: 100%;
+            max-width: 28rem; /* То же ограничение, что и у game-container */
+        }
+        
+        .nav-btn.active {
+            color: #3b82f6;
+        }
+        .nav-btn.active i {
+            transform: translateY(-2px);
+            filter: drop-shadow(0 0 8px #3b82f6);
+        }
+        .nav-btn i {
+            transition: transform 0.2s, filter 0.2s;
+            font-size: 16px;
+        }
+        
+        .shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+
+        /* Стили для результатов ставок */
+        .result-win {
+            color: #10b981;
+            font-weight: bold;
+        }
+        
+        .result-lose {
+            color: #ef4444;
+            font-weight: bold;
+        }
+        
+        .win-badge {
+            background: rgba(16, 185, 129, 0.2);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            font-size: 8px;
+            padding: 1px 3px;
+            border-radius: 3px;
+            margin-left: 2px;
+        }
+        
+        .lose-badge {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            font-size: 8px;
+            padding: 1px 3px;
+            border-radius: 3px;
+            margin-left: 2px;
+        }
+        
+        .pending-badge {
+            background: rgba(59, 130, 246, 0.2);
+            color: #3b82f6;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            font-size: 6px;
+            padding: 1px 3px;
+            border-radius: 3px;
+            margin-left: 2px;
+        }
+        
+        /* Кастомный скроллбар для ставок игроков */
+        #otherBetsDisplay::-webkit-scrollbar {
+            width: 3px;
+        }
+        
+        #otherBetsDisplay::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.3);
+            border-radius: 10px;
+        }
+        
+        #otherBetsDisplay::-webkit-scrollbar-thumb {
+            background: linear-gradient(to bottom, #3b82f6, #1d4ed8);
+            border-radius: 10px;
+        }
+        
+        #otherBetsDisplay::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(to bottom, #60a5fa, #3b82f6);
+        }
+        
+        /* Для Firefox */
+        #otherBetsDisplay {
+            scrollbar-width: thin;
+            scrollbar-color: #3b82f6 rgba(15, 23, 42, 0.3);
+        }
+        
+        /* Анимации для добавления ставок */
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes slideInLeft {
+            from {
+                transform: translateX(-100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes pulseIn {
+            0% {
+                transform: scale(0.8);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.05);
+                opacity: 0.8;
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        
+        .bet-entry {
+            animation-duration: 0.5s;
+            animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            animation-fill-mode: both;
+        }
+        
+        .bet-player {
+            animation-name: slideInRight;
+        }
+        
+        .bet-bot {
+            animation-name: slideInLeft;
+        }
+        
+        .bet-player-result {
+            animation-name: fadeInUp;
+        }
+        
+        .bet-bot-result {
+            animation-name: pulseIn;
+        }
+
+        /* КОМПАКТНЫЙ СТИЛЬ ДЛЯ СТАВОК ИГРОКОВ */
+        .compact-bet {
+            padding: 6px 8px;
+            margin-bottom: 3px;
+            border-radius: 8px;
+        }
+        
+        .compact-bet .user-icon {
+            width: 24px;
+            height: 24px;
+            font-size: 11px;
+        }
+        
+        .compact-bet .user-name {
+            font-size: 10px;
+        }
+        
+        .compact-bet .bet-amount {
+            font-size: 11px;
+        }
+        
+        .compact-bet .cell-info {
+            font-size: 8px;
+        }
+
+        /* Адаптивные отступы для мобильных устройств */
+        @media (max-width: 640px) {
+            .game-container {
+                padding-left: 1.5rem; /* Больше отступы на мобилках */
+                padding-right: 1.5rem;
+            }
+            
+            .nav-container {
+                margin-left: 1.5rem;
+                margin-right: 1.5rem;
+                width: calc(100% - 3rem);
+                max-width: none; /* На мобилках убираем ограничение ширины */
+            }
+            
+            /* Уменьшаем ячейки еще больше на очень маленьких экранах */
+            .cell {
+                min-height: 45px;
+                font-size: 14px;
+            }
+            
+            .mine, .gem {
+                font-size: 1.1rem !important;
+            }
+            
+            /* На мобилках центрируем навигацию */
+            .nav-container {
+                left: 50%;
+                transform: translateX(-50%);
+                width: calc(100% - 3rem);
+            }
+        }
+
+        @media (max-width: 380px) {
+            .game-container {
+                padding-left: 1rem;
+                padding-right: 1rem;
+            }
+            
+            .nav-container {
+                margin-left: 1rem;
+                margin-right: 1rem;
+                width: calc(100% - 2rem);
+            }
+            
+            .cell {
+                min-height: 40px;
+                font-size: 12px;
+            }
+            
+            .mine, .gem {
+                font-size: 1rem !important;
+            }
+            
+            .grid-frame {
+                padding: 12px; /* Немного уменьшаем отступы внутри рамки */
+            }
+        }
+
+        /* Для больших экранов (ПК) */
+        @media (min-width: 768px) {
+            .game-container {
+                padding-left: 0; /* На ПК убираем боковые отступы */
+                padding-right: 0;
+                max-width: 28rem; /* Фиксированная ширина для ПК */
+            }
+            
+            .nav-container {
+                max-width: 28rem; /* Такая же ширина как у контейнера */
+                left: 50%;
+                transform: translateX(-50%);
+            }
+            
+            /* Немного увеличиваем ячейки для ПК */
+            .cell {
+                min-height: 60px;
+                font-size: 18px;
+            }
+            
+            .mine, .gem {
+                font-size: 1.5rem !important;
+            }
+            
+            .grid-frame {
+                padding: 20px; /* Немного больше отступы внутри рамки */
+            }
+        }
+    </style>
+</head>
+<body class="flex flex-col relative">
+
+    <!-- Верхняя панель: Баланс -->
+    <header class="p-2 flex justify-between items-center z-10 glass m-2 rounded-xl shrink-0 mx-4 md:mx-auto md:max-w-2xl"> <!-- На ПК центрируем -->
+        <div class="font-bold text-sm tracking-wider flex items-center gap-1">
+            <div class="w-6 h-6 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-600/30">
+                <i class="fas fa-th text-white text-[10px]"></i>
+            </div>
+            <span>TON GRID</span>
+        </div>
+        <div class="flex items-center gap-1 bg-slate-900/60 px-2 py-1 rounded-xl border border-blue-500/20 backdrop-blur-md">
+            <div class="text-white font-mono font-bold text-xs" id="balanceDisplay">100.00</div>
+            <div class="w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center text-[8px] font-bold shadow shadow-blue-500/50">T</div>
+        </div>
+    </header>
+
+    <!-- Основной контент (скроллируемая область) -->
+    <div class="flex-1 overflow-y-auto pb-16 relative">
+        
+        <!-- СЕКЦИЯ ИГРЫ -->
+        <main id="gameSection" class="flex flex-col items-center justify-start pt-1 transition-opacity duration-300 min-h-full">
+            
+            <!-- Центральный контейнер с ограничением ширины и ОТСТУПАМИ ОТ КРАЕВ -->
+            <div class="game-container flex flex-col items-center">
+                
+                <!-- Инструкция -->
+                <div id="instructionTextWrapper" class="h-4 mb-2 flex justify-center items-center transition-opacity duration-300 w-full">
+                    <div id="instructionText" class="text-[9px] font-bold text-blue-300 animate-pulse bg-blue-900/30 px-1.5 py-0.5 rounded-full border border-blue-500/30 opacity-0 pointer-events-none">
+                        ВЫБЕРИТЕ ЯЧЕЙКУ
+                    </div>
+                </div>
+
+                <!-- Таймер -->
+                <div class="w-full mb-0.5 flex justify-between text-[10px] text-gray-400 font-bold uppercase tracking-wide">
+                    <span id="statusText">Ожидание...</span>
+                    <span id="timerText" class="font-mono text-blue-400">0.0s</span>
+                </div>
+                <div class="timer-bar-container w-full">
+                    <div id="timerBar" class="timer-bar"></div>
+                </div>
+
+                <!-- Рамка с игровым полем - ТЕПЕРЬ С БОЛЬШИМИ ОТСТУПАМИ ВНУТРИ -->
+                <div class="grid-frame">
+                    <div class="game-grid" id="grid">
+                        <!-- Ячейки генерируются JS -->
+                    </div>
+                </div>
+
+                <!-- Кнопка ставки -->
+                <button id="openBetBtn" onclick="openBetModal()" class="w-full bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600 hover:to-blue-500 text-white font-bold py-2.5 rounded-xl shadow-lg shadow-blue-900/40 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-1 border-t border-white/10 text-xs mt-1">
+                    <span>СДЕЛАТЬ СТАВКУ</span>
+                </button>
+
+                <!-- СТАВКИ ИГРОКОВ -->
+                <div class="mt-3 mb-1 w-full">
+                    <h4 class="text-xs font-bold text-gray-400 mb-1.5 ml-1 flex items-center gap-1">
+                        <i class="fas fa-users text-blue-400 text-xs"></i>
+                        СТАВКИ ИГРОКОВ
+                    </h4>
+                    <div id="otherBetsDisplay" class="w-full space-y-0.5 max-h-52 overflow-y-auto pr-1 compact-bets-container">
+                        <!-- Элементы ставок будут добавляться сюда JS -->
+                    </div>
+                </div>
+
+            </div> <!-- End of game-container wrapper -->
+        </main>
+
+        <!-- СЕКЦИЯ ПРОФИЛЯ -->
+        <main id="profileSection" class="hidden flex flex-col items-center justify-center pt-4 px-4 md:px-0 md:max-w-2xl md:mx-auto transition-opacity duration-300"> <!-- На ПК центрируем -->
+            <div class="relative mb-3">
+                <div class="w-16 h-16 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-full flex items-center justify-center text-2xl shadow-2xl shadow-blue-500/40">
+                    <i class="fas fa-user-astronaut text-white"></i>
+                </div>
+                <div class="absolute bottom-0 right-0 w-4 h-4 bg-emerald-500 rounded-full border-2 border-[#0f172a]"></div>
+            </div>
+            
+            <h2 class="text-lg font-bold mb-1">Player_One</h2>
+            <p class="text-blue-400/60 text-xs font-mono mb-4 bg-blue-900/20 px-1.5 py-0.5 rounded-full border border-blue-500/10">ID: 8839201</p>
+
+            <div class="w-full max-w-[350px] space-y-1.5">
+                <div class="glass p-2 rounded-xl flex justify-between items-center group active:bg-white/5 transition-colors cursor-pointer">
+                    <div class="flex items-center gap-1.5">
+                        <div class="w-6 h-6 rounded-lg bg-pink-500/20 flex items-center justify-center text-pink-400 text-xs"><i class="fas fa-gift"></i></div>
+                        <span class="text-gray-300 text-xs font-medium">Инвентарь</span>
+                    </div>
+                    <span class="font-bold text-white bg-white/5 px-1.5 py-0.5 rounded-lg text-xs" id="giftCountDisplay">3</span>
+                </div>
+                
+                <div class="glass p-2 rounded-xl flex justify-between items-center group active:bg-white/5 transition-colors cursor-pointer">
+                    <div class="flex items-center gap-1.5">
+                        <div class="w-6 h-6 rounded-lg bg-blue-500/20 flex items-center justify-center text-blue-400 text-xs"><i class="fas fa-history"></i></div>
+                        <span class="text-gray-300 text-xs font-medium">История игр</span>
+                    </div>
+                    <span class="font-bold text-white bg-white/5 px-1.5 py-0.5 rounded-lg text-xs">142</span>
+                </div>
+
+                <div class="glass p-2 rounded-xl flex justify-between items-center group active:bg-white/5 transition-colors cursor-pointer">
+                    <div class="flex items-center gap-1.5">
+                        <div class="w-6 h-6 rounded-lg bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-xs"><i class="fas fa-chart-line"></i></div>
+                        <span class="text-gray-300 text-xs font-medium">Статистика</span>
+                    </div>
+                    <span class="font-bold text-emerald-400 bg-emerald-900/20 px-1.5 py-0.5 rounded-lg text-xs">54%</span>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Нижняя навигация (Fixed Bottom) -->
+    <nav class="fixed bottom-2 h-12 glass rounded-xl flex justify-around items-center z-40 nav-container shadow-2xl shadow-black/50">
+        <button onclick="switchTab('game')" class="nav-btn active flex flex-col items-center justify-center w-full h-full text-slate-400 hover:text-white transition-colors" id="navGame">
+            <i class="fas fa-gamepad text-base mb-0"></i>
+            <span class="text-[8px] font-bold">Игра</span>
+        </button>
+        <button onclick="switchTab('profile')" class="nav-btn flex flex-col items-center justify-center w-full h-full text-slate-400 hover:text-white transition-colors" id="navProfile">
+            <i class="fas fa-user text-base mb-0"></i>
+            <span class="text-[8px] font-bold">Профиль</span>
+        </button>
+    </nav>
+
+    <!-- Модальное окно: Ставка -->
+    <div id="betModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-end justify-center sm:items-center">
+        <div class="bg-[#0f172a] w-full max-w-[400px] rounded-t-3xl sm:rounded-2xl p-4 slide-up border-t sm:border border-white/10 shadow-2xl relative">
+            
+            <!-- Полоска для свайпа на мобилках -->
+            <div class="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-4 sm:hidden"></div>
+
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-base font-bold text-white">Сумма ставки</h3>
+                <button onclick="closeBetModal()" class="w-6 h-6 rounded-full bg-slate-800 flex items-center justify-center text-gray-400 hover:text-white transition-colors text-xs"><i class="fas fa-times"></i></button>
+            </div>
+
+            <!-- Табы -->
+            <div class="flex bg-slate-900 rounded-xl p-1 mb-4 border border-white/5">
+                <button onclick="setBetType('TON')" id="tabTon" class="flex-1 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold transition-all shadow-lg">TON (x1.45)</button>
+                <button onclick="setBetType('GIFT')" id="tabGift" class="flex-1 py-2 rounded-lg text-gray-500 text-xs font-bold hover:text-white transition-all">Подарок (x1.5)</button>
+            </div>
+
+            <!-- Ввод суммы (TON) -->
+            <div id="inputSectionTON">
+                <div class="relative mb-2">
+                    <div class="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none">
+                        <span class="text-blue-500 font-bold text-xs bg-blue-500/10 px-1.5 py-0.5 rounded">TON</span>
+                    </div>
+                    <input type="number" id="betAmountInput" class="w-full bg-slate-800 rounded-2xl py-2.5 pl-12 pr-2 text-lg font-bold text-white outline-none border border-slate-700 focus:border-blue-500 transition-colors" placeholder="0.00" value="10">
+                </div>
+                
+                <div class="grid grid-cols-4 gap-1.5 mb-4">
+                    <button onclick="adjustBet(10)" class="bg-slate-800 hover:bg-slate-700 py-1.5 rounded-xl text-xs font-bold text-gray-300 transition-colors border border-white/5">+10</button>
+                    <button onclick="adjustBet(50)" class="bg-slate-800 hover:bg-slate-700 py-1.5 rounded-xl text-xs font-bold text-gray-300 transition-colors border border-white/5">+50</button>
+                    <button onclick="adjustBet(100)" class="bg-slate-800 hover:bg-slate-700 py-1.5 rounded-xl text-xs font-bold text-gray-300 transition-colors border border-white/5">+100</button>
+                    <button onclick="setMaxBet()" class="bg-blue-900/40 hover:bg-blue-900/60 py-1.5 rounded-xl text-xs font-bold text-blue-400 transition-colors border border-blue-500/20">MAX</button>
+                </div>
+            </div>
+
+            <!-- Секция подарка -->
+            <div id="inputSectionGIFT" class="hidden text-center py-4 mb-4 bg-slate-800/50 rounded-2xl border border-dashed border-slate-600 relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-pink-500/5 to-transparent"></div>
+                <div class="text-3xl mb-1 animate-bounce relative z-10">🎁</div>
+                <p class="text-sm text-gray-300 relative z-10">Доступно: <span id="modalGiftCount" class="text-pink-400 font-bold text-sm">3</span> шт.</p>
+                <p class="text-xs text-gray-500 mt-0.5 relative z-10">Будет списан 1 подарок</p>
+            </div>
+
+            <button onclick="placeBet()" class="w-full bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-bold py-2.5 rounded-xl shadow-lg shadow-green-600/20 active:scale-95 transition-transform flex items-center justify-center gap-1 text-xs">
+                <span>ПОДТВЕРДИТЬ</span>
+                <i class="fas fa-check text-xs"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Модальное окно: Результат -->
+    <div id="resultModal" class="fixed inset-0 z-50 flex items-center justify-center pointer-events-none opacity-0 transition-opacity duration-300 px-4"> <!-- Увеличил отступы -->
+        <div class="bg-slate-900/90 backdrop-blur-xl border border-white/10 px-4 py-4 rounded-[20px] shadow-2xl transform scale-90 transition-transform duration-300 text-center w-full max-w-[260px]" id="resultContent">
+            <div class="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white/5 to-transparent rounded-[20px] pointer-events-none"></div>
+            <div id="resultIcon" class="text-5xl mb-2 drop-shadow-2xl filter"></div>
+            <h2 id="resultTitle" class="text-xl font-black mb-1 uppercase tracking-wide">WIN</h2>
+            <div id="resultSubtitle" class="text-white font-bold text-base bg-slate-800 py-1.5 px-3 rounded-xl inline-block border border-white/5 shadow-inner"></div>
+        </div>
+    </div>
+
+    <script>
+        // --- СОСТОЯНИЕ ИГРЫ ---
+        let balance = 100.00;
+        let gifts = 3;
+        
+        const ROUND_TIME = 10;
+        let currentTime = ROUND_TIME;
+        let gameInterval;
+        let isBettingOpen = true;
+        
+        let selectedCellIndex = null; 
+        
+        let currentBet = {
+            active: false,
+            type: 'TON', 
+            amount: 0
+        };
+        
+        const MOCK_PLAYERS = ['CryptoKing', 'TONMaster', 'JaneDoe', 'Bot_2024', 'AnonUser', 'TheWhale', 'SpeedyGonzales', 'LuckySeven'];
+        let mockBets = [];
+        let currentRoundResultIndex = null;
+        let botBetInterval;
+        let botsAdded = 0;
+        const MAX_BOTS = 8;
+
+        const els = {
+            balance: document.getElementById('balanceDisplay'),
+            grid: document.getElementById('grid'),
+            timerBar: document.getElementById('timerBar'),
+            timerText: document.getElementById('timerText'),
+            statusText: document.getElementById('statusText'),
+            betBtn: document.getElementById('openBetBtn'),
+            betModal: document.getElementById('betModal'),
+            betAmountInput: document.getElementById('betAmountInput'),
+            tabTon: document.getElementById('tabTon'),
+            tabGift: document.getElementById('tabGift'),
+            inputTon: document.getElementById('inputSectionTON'),
+            inputGift: document.getElementById('inputSectionGIFT'),
+            resultModal: document.getElementById('resultModal'),
+            resultContent: document.getElementById('resultContent'),
+            giftCountDisplay: document.getElementById('giftCountDisplay'),
+            modalGiftCount: document.getElementById('modalGiftCount'),
+            instructionText: document.getElementById('instructionText'),
+            otherBetsDisplay: document.getElementById('otherBetsDisplay')
+        };
+
+        function init() {
+            createGrid();
+            updateBalanceUI();
+            setBetType('TON'); 
+            startGameLoop();
+        }
+        
+        function showInstruction(show) {
+            const textEl = els.instructionText;
+            if (show) {
+                textEl.classList.remove('opacity-0', 'pointer-events-none');
+            } else {
+                textEl.classList.add('opacity-0', 'pointer-events-none');
+            }
+        }
+
+        // --- ГЕНЕРАЦИЯ СЕТКИ ---
+        function createGrid() {
+            els.grid.innerHTML = '';
+            for (let i = 0; i < 9; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.dataset.index = i;
+                cell.onclick = () => handleCellClick(i); 
+                
+                cell.innerHTML = `
+                    <div class="cell-front flex flex-col items-center justify-center">
+                        <i class="fas fa-question text-white/20 text-xs"></i> <!-- Уменьшил иконку вопроса -->
+                    </div>
+                    <div class="cell-back">
+                        <i class="fas fa-question text-white/20 text-xs"></i> <!-- Уменьшил иконку вопроса -->
+                    </div>
+                `;
+                els.grid.appendChild(cell);
+            }
+        }
+
+        // --- ОБНОВЛЕНИЕ БАЛАНСА И ПОДАРКОВ ---
+        function updateBalanceUI() {
+            els.balance.textContent = balance.toFixed(2);
+            els.giftCountDisplay.textContent = gifts;
+            els.modalGiftCount.textContent = gifts;
+            
+            if (gifts <= 0) {
+                els.tabGift.disabled = true;
+                els.tabGift.classList.remove('hover:text-white');
+                els.tabGift.classList.add('opacity-50', 'cursor-not-allowed');
+                if (currentBet.type === 'GIFT') {
+                    setBetType('TON');
+                }
+            } else {
+                els.tabGift.disabled = false;
+                els.tabGift.classList.add('hover:text-white');
+                els.tabGift.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+        }
+        
+        // --- ОБРАБОТКА НАЖАТИЯ НА ЯЧЕЙКУ ---
+        function handleCellClick(index) {
+            if (!isBettingOpen || currentBet.active) return; 
+
+            const cell = document.querySelector(`.cell[data-index="${index}"]`);
+            if (!cell) return;
+            
+            const previousCell = document.querySelector('.cell.selected');
+            if (previousCell && previousCell !== cell) {
+                previousCell.classList.remove('selected');
+            }
+            
+            if (cell.classList.contains('selected')) {
+                cell.classList.remove('selected');
+                selectedCellIndex = null;
+                showInstruction(false);
+                els.betBtn.disabled = true;
+            } else {
+                cell.classList.add('selected');
+                selectedCellIndex = index;
+                showInstruction(true);
+                els.betBtn.disabled = false;
+            }
+        }
+
+        // --- ЛОГИКА МОДАЛЬНОГО ОКНА СТАВКИ ---
+        function openBetModal() {
+            if (!isBettingOpen || currentBet.active) return;
+            if (selectedCellIndex === null) {
+                els.grid.classList.add('shake');
+                setTimeout(() => els.grid.classList.remove('shake'), 400);
+                showInstruction(true);
+                return;
+            }
+            
+            if (currentBet.type === 'TON') {
+                els.betAmountInput.value = Math.min(10, balance).toFixed(2);
+            }
+            updateBalanceUI();
+            els.betModal.classList.remove('hidden');
+        }
+
+        function closeBetModal() {
+            els.betModal.classList.add('hidden');
+        }
+
+        function setBetType(type) {
+            currentBet.type = type;
+
+            if (type === 'TON') {
+                els.tabTon.classList.add('bg-blue-600', 'text-white', 'shadow-lg');
+                els.tabTon.classList.remove('text-gray-500', 'shadow-none');
+                els.tabGift.classList.remove('bg-blue-600', 'text-white', 'shadow-lg');
+                els.tabGift.classList.add('text-gray-500', 'shadow-none');
+                
+                els.inputTon.classList.remove('hidden');
+                els.inputGift.classList.add('hidden');
+            } else { // GIFT
+                els.tabGift.classList.add('bg-blue-600', 'text-white', 'shadow-lg');
+                els.tabGift.classList.remove('text-gray-500', 'shadow-none');
+                els.tabTon.classList.remove('bg-blue-600', 'text-white', 'shadow-lg');
+                els.tabTon.classList.add('text-gray-500', 'shadow-none');
+
+                els.inputTon.classList.add('hidden');
+                els.inputGift.classList.remove('hidden');
+            }
+        }
+
+        function adjustBet(amount) {
+            if (currentBet.type === 'TON') {
+                let current = parseFloat(els.betAmountInput.value) || 0;
+                let newAmount = Math.min(current + amount, balance);
+                els.betAmountInput.value = Math.max(0, newAmount).toFixed(2); 
+            }
+        }
+
+        function setMaxBet() {
+            if (currentBet.type === 'TON') {
+                els.betAmountInput.value = balance.toFixed(2);
+            }
+        }
+
+        // --- ЛОГИКА РАЗМЕЩЕНИЯ СТАВКИ ---
+        function placeBet() {
+            if (!isBettingOpen || selectedCellIndex === null) return;
+            
+            let amount;
+            
+            if (currentBet.type === 'TON') {
+                amount = parseFloat(els.betAmountInput.value);
+                if (isNaN(amount) || amount <= 0.01 || amount > balance) {
+                    console.error("Invalid TON bet amount.");
+                    els.betAmountInput.classList.add('shake');
+                    setTimeout(() => els.betAmountInput.classList.remove('shake'), 400);
+                    return;
+                }
+                balance -= amount;
+            } else { // GIFT
+                if (gifts <= 0) {
+                    console.error("No gifts available.");
+                    return;
+                }
+                amount = 1;
+                gifts -= 1;
+            }
+
+            // Обновление состояния
+            currentBet.active = true;
+            currentBet.amount = amount;
+            
+            // Обновление UI
+            updateBalanceUI();
+            closeBetModal();
+            
+            // Блокировка UI
+            els.betBtn.disabled = true;
+            els.betBtn.innerHTML = `<i class="fas fa-lock text-xs"></i> СТАВКА ПРИНЯТА`;
+            els.betBtn.className = "w-full bg-emerald-600/20 text-emerald-400 font-bold py-2.5 rounded-xl border border-emerald-500/50 shadow-lg cursor-default text-xs mt-1";
+            
+            // Визуальная блокировка ячеек
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach(c => c.classList.add('locked'));
+
+            // Добавление ставки игрока к мок-ставкам с анимацией
+            const playerBet = {
+                user: 'Вы', 
+                amount: currentBet.type === 'TON' ? `${amount.toFixed(2)} TON` : '1 🎁',
+                cellIndex: selectedCellIndex,
+                isPlayer: true,
+                hideCell: false,
+                result: null
+            };
+            
+            mockBets.push(playerBet);
+            addBetWithAnimation(playerBet, true);
+        }
+
+        // --- ДОБАВЛЕНИЕ СТАВКИ С АНИМАЦИЕЙ (КОМПАКТНАЯ ВЕРСИЯ) ---
+        function addBetWithAnimation(bet, isPlayerBet = false) {
+            const betEl = document.createElement('div');
+            
+            let borderClass = 'border-slate-700/50';
+            let bgClass = 'bg-slate-800/40';
+            let animationClass = isPlayerBet ? 'bet-player' : 'bet-bot';
+            
+            if (bet.result) {
+                animationClass = isPlayerBet ? 'bet-player-result' : 'bet-bot-result';
+                if (bet.result.win) {
+                    borderClass = 'border-green-500/30';
+                    bgClass = 'bg-green-900/20';
+                } else {
+                    borderClass = 'border-red-500/30';
+                    bgClass = 'bg-red-900/20';
+                }
+            } else if (!isBettingOpen && !currentBet.active) {
+                borderClass = 'border-gray-500/30';
+                bgClass = 'bg-gray-900/20';
+            }
+            
+            betEl.className = `compact-bet p-1.5 rounded-lg flex justify-between items-center transition-colors border ${bgClass} ${borderClass} bet-entry ${animationClass}`;
+            
+            const cellDisplayIndex = parseInt(bet.cellIndex) + 1;
+            const cellSymbol = (bet.isPlayer && !bet.hideCell) ? `(Ячейка: ${cellDisplayIndex})` : ``;
+
+            let resultBadge = '';
+            if (bet.result) {
+                if (bet.result.win) {
+                    resultBadge = `<span class="win-badge">+${bet.result.amount.toFixed(2)}</span>`;
+                } else {
+                    const lossAmount = typeof bet.result.originalAmount === 'number' && bet.result.originalAmount > 0 ? 
+                        bet.result.originalAmount.toFixed(2) + '' : 
+                        (bet.amount.includes('🎁') ? '1' : '0');
+                    resultBadge = `<span class="lose-badge">-${lossAmount}</span>`;
+                }
+            } else if (!isBettingOpen && !bet.isPlayer) {
+                resultBadge = `<span class="pending-badge">...</span>`;
+            }
+
+            betEl.innerHTML = `
+                <div class="flex items-center gap-1.5">
+                    <div class="user-icon w-5 h-5 rounded-full ${bet.isPlayer ? 'bg-blue-600' : 'bg-slate-600'} flex items-center justify-center text-[10px]">
+                        <i class="fas ${bet.isPlayer ? 'fa-star' : 'fa-user'}"></i>
+                    </div>
+                    <div>
+                        <div class="user-name text-[9px] font-bold ${bet.isPlayer ? 'text-blue-200' : 'text-gray-300'} flex items-center">
+                            ${bet.isPlayer ? 'Вы' : bet.user}
+                            ${resultBadge}
+                        </div>
+                        <div class="cell-info text-[7px] text-gray-400">${cellSymbol}</div>
+                    </div>
+                </div>
+                <div class="bet-amount font-bold text-[10px] ${bet.isPlayer ? 'text-blue-400' : 'text-white'}">${bet.amount}</div>
+            `;
+            
+            if (bet.isPlayer) {
+                els.otherBetsDisplay.prepend(betEl);
+            } else {
+                els.otherBetsDisplay.appendChild(betEl);
+            }
+        }
+
+        // --- ЛОГИКА ИГРОВОГО ЦИКЛА ---
+        function startGameLoop() {
+            els.statusText.textContent = "Ожидание ставок";
+            els.timerBar.style.width = '100%';
+            isBettingOpen = true;
+            
+            mockBets = [];
+            els.otherBetsDisplay.innerHTML = '';
+            botsAdded = 0;
+            
+            startBotBets();
+            
+            simulateInitialBets(); 
+
+            gameInterval = setInterval(() => {
+                currentTime -= 0.1;
+                
+                if (currentTime <= 0) {
+                    clearInterval(gameInterval);
+                    clearInterval(botBetInterval);
+                    endRound();
+                    return;
+                }
+                
+                els.timerText.textContent = `${currentTime.toFixed(1)}s`;
+                els.timerBar.style.width = `${(currentTime / ROUND_TIME) * 100}%`;
+
+                if (currentTime <= 3 && isBettingOpen) {
+                    isBettingOpen = false;
+                    clearInterval(botBetInterval);
+                    els.statusText.textContent = "Розыгрыш...";
+                    showInstruction(false);
+                    
+                    if (els.betModal.classList.contains('hidden') === false) {
+                        closeBetModal();
+                    }
+                    
+                    if (!currentBet.active) {
+                        els.betBtn.disabled = true;
+                        els.betBtn.innerHTML = `ВРЕМЯ ВЫШЛО`;
+                        els.betBtn.className = "w-full bg-red-800/20 text-red-400 font-bold py-2.5 rounded-xl border border-red-500/50 shadow-lg cursor-default text-xs mt-1";
+                    }
+                }
+            }, 100);
+        }
+
+        // --- ПОСТЕПЕННОЕ ДОБАВЛЕНИЕ СТАВОК БОТОВ ---
+        function startBotBets() {
+            if (botBetInterval) {
+                clearInterval(botBetInterval);
+            }
+            
+            const interval = Math.random() * 2500 + 1500;
+            
+            botBetInterval = setInterval(() => {
+                if (botsAdded >= MAX_BOTS || !isBettingOpen) {
+                    clearInterval(botBetInterval);
+                    return;
+                }
+                
+                const isGift = Math.random() < 0.2 && gifts > 0;
+                const amount = isGift ? '1 🎁' : `${(Math.random() * 50 + 1).toFixed(2)} TON`;
+                const playerIndex = Math.floor(Math.random() * MOCK_PLAYERS.length);
+                const playerName = MOCK_PLAYERS[playerIndex];
+                const cellIndex = Math.floor(Math.random() * 9);
+                
+                const botBet = {
+                    user: playerName,
+                    amount: amount,
+                    cellIndex: cellIndex,
+                    isPlayer: false,
+                    hideCell: true,
+                    result: null
+                };
+                
+                mockBets.push(botBet);
+                botsAdded++;
+                
+                addBetWithAnimation(botBet, false);
+                
+                playBetSound();
+                
+            }, interval);
+        }
+
+        function playBetSound() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = 800 + Math.random() * 400;
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.2);
+            } catch (e) {
+                console.log("Web Audio API не поддерживается");
+            }
+        }
+
+        function endRound() {
+            els.statusText.textContent = "Результаты";
+            els.timerText.textContent = `0.0s`;
+            els.timerBar.style.width = '0%';
+            isBettingOpen = false;
+
+            if (els.betModal.classList.contains('hidden') === false) {
+                closeBetModal();
+            }
+
+            currentRoundResultIndex = Math.floor(Math.random() * 9); 
+            
+            const cells = document.querySelectorAll('.cell');
+            cells.forEach((cell, index) => {
+                const back = cell.querySelector('.cell-back');
+                
+                back.innerHTML = '';
+                
+                if (index === currentRoundResultIndex) {
+                    back.innerHTML = `<i class="fas fa-bomb mine"></i>`;
+                } else {
+                    back.innerHTML = `<i class="fas fa-gem gem"></i>`;
+                }
+                
+                if (currentBet.active && index === selectedCellIndex) {
+                    if (index === currentRoundResultIndex) {
+                        cell.style.borderColor = '#ef4444';
+                        cell.style.boxShadow = '0 0 15px rgba(239, 68, 68, 0.8), inset 0 0 10px rgba(239, 68, 68, 0.4)';
+                    } else {
+                        cell.style.borderColor = '#10b981';
+                        cell.style.boxShadow = '0 0 15px rgba(16, 185, 129, 0.8), inset 0 0 10px rgba(16, 185, 129, 0.4)';
+                    }
+                }
+
+                cell.classList.remove('locked');
+                
+                setTimeout(() => {
+                    cell.classList.add('flipped');
+                }, index * 50);
+            });
+            
+            let isWin = false;
+            let winnings = 0;
+            if (currentBet.active) {
+                if (selectedCellIndex !== null && selectedCellIndex !== currentRoundResultIndex) {
+                    isWin = true;
+                    const multiplier = currentBet.type === 'TON' ? 1.45 : 1.5;
+                    winnings = currentBet.amount * multiplier;
+                    
+                    if (currentBet.type === 'TON') {
+                        balance += winnings;
+                    } else {
+                        balance += 15; 
+                    }
+                } else {
+                    isWin = false;
+                }
+                
+                updateBetResults(isWin, winnings);
+                showResult(isWin, winnings);
+            } else {
+                setTimeout(() => {
+                    showResultForObserver(currentRoundResultIndex);
+                }, 1000);
+                
+                updateBetResultsForAll();
+            }
+
+            setTimeout(resetGame, 5000);
+        }
+
+        function updateBetResultsForAll() {
+            mockBets.forEach(bet => {
+                if (bet.result === null) {
+                    const isWin = bet.cellIndex !== currentRoundResultIndex;
+                    
+                    let originalAmount = 0;
+                    if (typeof bet.amount === 'string') {
+                        if (bet.amount.includes('TON')) {
+                            originalAmount = parseFloat(bet.amount);
+                        } else if (bet.amount.includes('🎁')) {
+                            originalAmount = 1;
+                        }
+                    }
+                    
+                    const winnings = isWin ? 
+                        (originalAmount * (bet.amount.includes('🎁') ? 1.5 : 1.45)) : 
+                        0;
+                    
+                    bet.result = {
+                        win: isWin,
+                        amount: winnings,
+                        originalAmount: originalAmount
+                    };
+                }
+            });
+            
+            renderOtherBetsWithResults();
+        }
+
+        function updateBetResults(isWin, winnings) {
+            mockBets.forEach(bet => {
+                if (bet.result === null) {
+                    if (bet.isPlayer) {
+                        bet.result = {
+                            win: isWin,
+                            amount: winnings,
+                            originalAmount: bet.amount.includes('TON') ? parseFloat(bet.amount) : 1
+                        };
+                    } else {
+                        const botWin = bet.cellIndex !== currentRoundResultIndex;
+                        const originalAmount = bet.amount.includes('TON') ? parseFloat(bet.amount) : 1;
+                        const botWinnings = botWin ? 
+                            (originalAmount * (bet.amount.includes('🎁') ? 1.5 : 1.45)) : 
+                            0;
+                        
+                        bet.result = {
+                            win: botWin,
+                            amount: botWinnings,
+                            originalAmount: originalAmount
+                        };
+                    }
+                }
+            });
+            
+            renderOtherBetsWithResults();
+        }
+
+        function renderOtherBetsWithResults() {
+            els.otherBetsDisplay.innerHTML = '';
+            
+            if (mockBets.length === 0) {
+                const emptyEl = document.createElement('div');
+                emptyEl.className = 'text-center py-2 text-gray-500 text-xs';
+                emptyEl.textContent = 'Ставок пока нет';
+                els.otherBetsDisplay.appendChild(emptyEl);
+                return;
+            }
+            
+            const sortedBets = mockBets.sort((a, b) => b.isPlayer - a.isPlayer);
+
+            sortedBets.forEach((bet, index) => {
+                setTimeout(() => {
+                    addBetWithAnimation(bet, bet.isPlayer);
+                }, index * 150);
+            });
+        }
+
+        function simulateInitialBets() {
+            // Не используется
+        }
+
+        function showResultForObserver(resultIndex) {
+            const cells = document.querySelectorAll('.cell');
+            
+            cells.forEach((cell, index) => {
+                if (index === resultIndex) {
+                    cell.style.borderColor = '#ef4444';
+                    cell.style.boxShadow = '0 0 15px rgba(239, 68, 68, 0.4), inset 0 0 8px rgba(239, 68, 68, 0.2)';
+                }
+            });
+            
+            setTimeout(() => {
+                const iconEl = document.getElementById('resultIcon');
+                const titleEl = document.getElementById('resultTitle');
+                const subtitleEl = document.getElementById('resultSubtitle');
+                
+                iconEl.innerHTML = '👀';
+                titleEl.textContent = 'РАУНД ЗАВЕРШЕН';
+                subtitleEl.textContent = 'Мина в ячейке ' + (resultIndex + 1);
+                iconEl.className = 'text-5xl mb-2 drop-shadow-2xl filter text-gray-400';
+                titleEl.className = 'text-lg font-black mb-1 uppercase tracking-wide text-gray-300';
+                
+                els.resultModal.classList.remove('opacity-0', 'pointer-events-none');
+                els.resultContent.classList.remove('scale-90');
+
+                setTimeout(() => {
+                    els.resultModal.classList.add('opacity-0', 'pointer-events-none');
+                    els.resultContent.classList.add('scale-90');
+                }, 2000);
+            }, 500);
+        }
+
+        function showResult(isWin, amount) {
+            const iconEl = document.getElementById('resultIcon');
+            const titleEl = document.getElementById('resultTitle');
+            const subtitleEl = document.getElementById('resultSubtitle');
+            
+            iconEl.className = 'text-5xl mb-2 drop-shadow-2xl filter';
+            titleEl.className = 'text-xl font-black mb-1 uppercase tracking-wide';
+            
+            if (isWin) {
+                iconEl.innerHTML = '🎉';
+                titleEl.textContent = 'ПОБЕДА!';
+                subtitleEl.textContent = `+${amount.toFixed(2)} TON`;
+                iconEl.classList.add('text-green-400');
+                titleEl.classList.add('text-green-400');
+            } else {
+                iconEl.innerHTML = '💥';
+                titleEl.textContent = 'ПРОИГРЫШ';
+                subtitleEl.textContent = `${currentBet.type === 'TON' ? '-'+currentBet.amount.toFixed(2)+' TON' : '-1 Подарок'}`;
+                iconEl.classList.add('text-red-400');
+                titleEl.classList.add('text-red-400');
+            }
+            
+            setTimeout(() => {
+                els.resultModal.classList.remove('opacity-0', 'pointer-events-none');
+                els.resultContent.classList.remove('scale-90');
+
+                setTimeout(() => {
+                    els.resultModal.classList.add('opacity-0', 'pointer-events-none');
+                    els.resultContent.classList.add('scale-90');
+                }, 3000);
+            }, 1000);
+        }
+        
+        function resetGame() {
+            currentTime = ROUND_TIME;
+            selectedCellIndex = null;
+            currentBet.active = false;
+            currentBet.amount = 0;
+            
+            createGrid();
+            updateBalanceUI();
+            
+            els.betBtn.disabled = true;
+            els.betBtn.innerHTML = `<span>СДЕЛАТЬ СТАВКУ</span>`;
+            els.betBtn.className = "w-full bg-gradient-to-r from-blue-700 to-blue-600 hover:from-blue-600 hover:to-blue-500 text-white font-bold py-2.5 rounded-xl shadow-lg shadow-blue-900/40 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 flex items-center justify-center gap-1 border-t border-white/10 text-xs mt-1";
+            
+            startGameLoop();
+        }
+
+        // --- НАВИГАЦИЯ ---
+        function switchTab(tab) {
+            const gameSec = document.getElementById('gameSection');
+            const profSec = document.getElementById('profileSection');
+            const navGame = document.getElementById('navGame');
+            const navProf = document.getElementById('navProfile');
+
+            if (tab === 'game') {
+                gameSec.classList.remove('hidden');
+                profSec.classList.add('hidden');
+                navGame.classList.add('active');
+                navProf.classList.remove('active');
+            } else {
+                gameSec.classList.add('hidden');
+                profSec.classList.remove('hidden');
+                navProf.classList.add('active');
+                navGame.classList.remove('active');
+            }
+        }
+
+        // --- ИНИЦИАЛИЗАЦИЯ ---
+        init();
+    </script>
+</body>
+</html>
